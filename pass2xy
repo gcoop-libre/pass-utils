@@ -1,0 +1,165 @@
+#!/bin/bash
+
+# This script comes with ABSOLUTELY NO WARRANTY, use at own risk
+# Copyright (C) 2017 Osiris Alejandro Gomez <osiris@gcoop.coop>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+die ()
+{
+  echo -e "\e[31m[ERROR]\e[0m $1" && exit 1
+}
+
+print_help()
+{
+  echo "$0"
+  echo
+  echo "Read 2 references from pass and copy to xy screen positions."
+  echo
+  echo "USE"
+  echo "  $0 a1 b1"
+  echo "  $0 REF1 REF2"
+  echo "  $0 REFA REFB"
+  echo
+  echo "CONFIG"
+  echo
+  echo "  You need create ~/.pass2xy.conf with required variables:"
+  echo
+  echo "    X1: 123"
+  echo "    X2: 678"
+  echo "    Y1: 200"
+  echo "    Y2: 200"
+  echo "    PASS_STORE_DIR: /home/username/.password-store"
+  echo "    PASS_REF_DIR: xy"
+  echo
+  echo "    # optional variables: "
+  echo "    REGEX_PASS1: [0-9]+"
+  echo "    REGEX_PASS2: [0-9]+"
+  echo "    REGEX_REF1: [a-z]{1}[0-9]{1}"
+  echo "    REGEX_REF2: [a-z]{1}[0-9]{1}"
+  echo 
+  echo "REQUIREMENTS:"
+  echo
+  echo "  apt-get install pass xautomation"
+  echo
+  exit 2
+}
+
+
+CONFIG="$HOME/.pass2xte.conf"
+[[ ! -e "$CONFIG" ]] && die "not found file: $CONFIG"
+
+eval $(sed '/:/!d;/^ *#/d;s/:/ /;' < "$CONFIG" | while read -r key val
+do
+    str="$key='$val'"
+    echo "$str"
+done)
+
+[[ -z "$X1" ]] && die "empty X1 in $CONFIG"
+[[ -z "$X2" ]] && die "empty X2 in $CONFIG"
+[[ -z "$Y1" ]] && die "empty Y1 in $CONFIG"
+[[ -z "$Y2" ]] && die "empty Y2 in $CONFIG"
+[[ -z "$PASS_STORE_DIR" ]] && die "empty PASS_STORE_DIR in $CONFIG"
+[[ -z "$PASS_REF_DIR" ]] && die "empty PASS_REF_DIR in $CONFIG"
+
+XTE=$(which xte)
+
+[[ "$XTE" != "/usr/bin/xte" ]] && die "try: apt-get install xautomation"
+
+[[ -z "$1" ]] && die "REF1 is required"
+[[ -z "$2" ]] && die "REF2 is required"
+
+REF1="$1"
+REF2="$2"
+
+OPTS=$(getopt -o h --long help -n 'bajas.sh' -- "$@")
+
+eval set -- "$OPTS"
+
+while true; do
+    case "$1" in
+        -h | --help)
+           print_help ;;
+        --) shift; break;;
+    esac
+done;
+
+if [ ! -z "$REGEX_REF1" ]
+then
+  VALID_REF1=$(echo "$REF1" | egrep -o "$REGEX_REF1")
+  [[ "$VALID_REF1" != "$REF1" ]] && die "invalid REF1"
+fi
+
+if [ ! -z "$REGEX_REF2" ]
+then
+  VALID_REF2=$(echo "$REF2" | egrep -o "$REGEX_REF2")
+  [[ "$VALID_REF2" != "$REF2" ]] && die "invalid REF2"
+fi
+
+PASS_DIR="$PASS_STORE_DIR/$PASS_REF_DIR"
+PASS_REF1_FILE="$PASS_DIR/${REF1}.gpg"
+PASS_REF2_FILE="$PASS_DIR/${REF2}.gpg"
+PASS_REF1_PASS="$PASS_REF_DIR/$REF1"
+PASS_REF2_PASS="$PASS_REF_DIR/$REF2"
+
+[[ ! -e "$PASS_REF1_FILE" ]] && PASS1=$(pass insert "$PASS_REF1_PASS")
+OK="$?"
+
+[[ "$OK" -gt 1 ]] && die "unknown pass error: pass $PASS_REF1_PASS"
+PASS1=$(pass "$PASS_REF1_PASS")
+
+[[ ! -e "$PASS_REF2_FILE" ]] && PASS2=$(pass insert "$PASS_REF2_PASS")
+OK="$?"
+
+[[ "$OK" -gt 1 ]] && die "unknown pass error: pass $PASS_REF2_PASS"
+PASS2=$(pass "$PASS_REF2_PASS")
+
+[[ ! -e "$PASS_REF1_FILE" ]] && die "not found file: $PASS_REF1_FILE"
+[[ ! -e "$PASS_REF2_FILE" ]] && die "not found file: $PASS_REF2_FILE"
+
+[[ -z "$PASS1" ]] && die "empty PASS1"
+[[ -z "$PASS2" ]] && die "empty PASS2"
+
+if [ ! -z "$REGEX_PASS1" ]
+then
+  VALID_PASS1=$(echo "$PASS1" | egrep -o "$REGEX_PASS1")
+  if [ "$VALID_PASS1" != "$PASS1" ]
+  then
+    die "invalid PASS1: pass $PASS_REF1_PASS"
+  fi
+fi
+
+if [ ! -z "$REGEX_PASS2" ]
+then
+  VALID_PASS2=$(echo "$PASS2" | egrep -o "$REGEX_PASS2")
+  if [ "$VALID_PASS2" != "$PASS2" ]
+  then
+    die "install PASS2: pass $PASS_REF2_PASS"
+  fi
+fi
+
+xte "mousemove $X1 $Y1"
+xte 'mouseclick 1'
+echo "$PASS1" | grep -o . | while read C
+do
+ xte "key $C"
+done
+
+xte "mousemove $X2 $Y2"
+xte 'mouseclick 1'
+echo "$PASS2" | grep -o . | while read C
+do
+ xte "key $C"
+done
+
