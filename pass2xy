@@ -40,6 +40,8 @@ print_help()
   echo "    X2: 678"
   echo "    Y1: 200"
   echo "    Y2: 200"
+  echo "    SLEEP1: 1"
+  echo "    SLEEP2: 1"
   echo "    PASS_STORE_DIR: /home/username/.password-store"
   echo "    PASS_REF_DIR: xy"
   echo
@@ -151,6 +153,9 @@ fi
 
 xte "mousemove $X1 $Y1"
 xte 'mouseclick 1'
+
+[[ ! -z "$SLEEP1" ]] && sleep "$SLEEP1"
+
 echo "$PASS1" | grep -o . | while read C
 do
  xte "key $C"
@@ -158,6 +163,9 @@ done
 
 xte "mousemove $X2 $Y2"
 xte 'mouseclick 1'
+
+[[ ! -z "$SLEEP2" ]] && sleep "$SLEEP2"
+
 echo "$PASS2" | grep -o . | while read C
 do
  xte "key $C"
