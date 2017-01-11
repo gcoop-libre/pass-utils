@@ -57,7 +57,7 @@ print_help()
 }
 
 
-CONFIG="$HOME/.pass2xte.conf"
+CONFIG="$HOME/.pass2xy.conf"
 [[ ! -e "$CONFIG" ]] && die "not found file: $CONFIG"
 
 eval $(sed '/:/!d;/^ *#/d;s/:/ /;' < "$CONFIG" | while read -r key val
