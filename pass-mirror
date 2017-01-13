@@ -52,6 +52,12 @@ print_changed() {
     echo -e "\e[1m\e[33m  ✱ \e[0m"
 }
 
+die() {
+  echo -e "\e[1m\e[31m"
+  echo "$1"
+  exit 1
+}
+
 get_pass_src() {
     PASSWORD_STORE_DIR=$SRC pass show "$1" 2> /dev/null
 }
