@@ -1,0 +1,125 @@
+#!/bin/bash
+
+print_help() {
+    echo "pass-mirror"
+    echo
+    echo "Copy passwords between two password stores."
+    echo
+    echo "OPTIONS"
+    echo "  -s --src=SRC    Master password store [~/.password-store]"
+    echo "  -d --dest=DEST  Mirrored password store [~/.password-store-mobile]"
+    echo "  -l --list=LIST  File with the list of passwords to mirror [DEST/.list]"
+    echo "  -r --reverse    Reverse src and dest"
+    echo "  -n --dry-run    Show a report without actually doing anything"
+    echo "  -h --help       Show this help and exit"
+    echo
+    echo "USO"
+    echo "  pass-mirror [REGEX]"
+    echo
+    echo "  Reads a list of passwords from DEST/.list and copies those passwords"
+    echo "  to DEST. The fil can also specify a different path inside DEST."
+    echo "  The file contains one password path per line."
+    exit 2
+}
+
+print_failed() {
+    echo -e "\e[1m\e[31m  ✖ \e[0m"
+}
+
+print_ok() {
+    echo -e "\e[1m\e[92m  ✔ \e[0m"
+}
+
+print_changed() {
+    echo -e "\e[1m\e[33m  ✱ \e[0m"
+}
+
+get_pass_src() {
+    PASSWORD_STORE_DIR=$SRC pass show "$1" 2> /dev/null
+}
+
+get_pass_dest() {
+    PASSWORD_STORE_DIR=$DEST pass show "$1" 2> /dev/null
+}
+
+insert_pass() {
+    PASSWORD_STORE_DIR=$DEST pass insert -m "$1" &> /dev/null
+}
+
+compare() {
+    FROM="$1"
+    TO="$2"
+    diff <(PASSWORD_STORE_DIR=$SRC pass show $FROM 2> /dev/null) <(PASSWORD_STORE_DIR=$DEST pass show $TO 2> /dev/null)
+}
+
+OPTS=`getopt -o hnrs::d::l:: --long help,dry-run,reverse,src::,dest::,list:: -n 'pass-mirror' -- "$@"`
+
+eval set -- "$OPTS"
+
+COPY=1
+REVERSE=0
+
+while true; do
+    case "$1" in
+        -h | --help)
+            print_help ;;
+        -n | --dry-run)
+            echo -e "\e[1m\e[92mDry run\e[0m (no password will be copied)"
+            COPY=0 ; shift ;;
+        -s | --src)
+            SRC=$2 ; shift 2 ;;
+        -d | --dest)
+            DEST=$2 ; shift 2 ;;
+        -l | --list)
+            LIST=$2 ; shift 2 ;;
+        -r | --reverse)
+            REVERSE=1 ; shift ;;
+        --) shift; break;;
+        *) print_help ;;
+    esac
+done;
+
+[[ -z "$1" ]] && REGEXP='.*' || REGEXP="$1"
+[[ -z "$SRC" ]] && SRC=~/.password-store
+[[ -z "$DEST" ]] && DEST=~/.password-store-mobile
+[[ -z "$LIST" ]] && LIST=$DEST/.list
+
+if [[ $REVERSE -eq 1 ]]; then
+    AUX="$SRC"; SRC="$DEST"; DEST="$AUX"
+fi
+
+TEMPLIST=`mktemp /tmp/.pass-mirror.XXXXXXXX.tmp`
+egrep "$REGEXP"  "$LIST" | grep -v '#' | egrep -v '^$' > "$TEMPLIST"
+
+if [[ $COPY -eq 0 ]]; then
+    echo "Copying entries from $SRC to $DEST..." | sed "s/\(.\)/\1̶/g"
+else
+    echo "Copying entries from $SRC to $DEST..."
+fi
+while read FROM TO; do
+    [[ -z "$TO" ]] && TO="$FROM"
+    if [[ $REVERSE -eq 1 ]]; then
+        AUX="$FROM"; FROM="$TO"; TO="$AUX"
+    fi
+    echo -en " > \e[34m$TO\e[0m ($FROM)"
+
+    SKIP=0
+    if [[ `get_pass_src $FROM` ]]; then
+        if [[ `get_pass_dest $TO` ]]; then
+            if [[ `compare "$FROM" "$TO"` ]]; then
+                print_changed
+            else
+                print_ok; SKIP=1
+            fi
+        else
+            print_changed
+        fi
+    else
+        print_failed
+    fi
+    if [[ $COPY -ne 0 ]] && [[ $SKIP -ne 1 ]]; then
+        get_pass_src $FROM | insert_pass $TO
+    fi
+done < $TEMPLIST
+
+rm $TEMPLIST
