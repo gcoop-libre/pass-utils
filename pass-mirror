@@ -17,25 +17,27 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 print_help() {
-    echo "pass-mirror"
-    echo
-    echo "Copy passwords between two password stores."
-    echo
-    echo "OPTIONS"
-    echo "  -s --src=SRC    Master password store [~/.password-store]"
-    echo "  -d --dest=DEST  Mirrored password store [~/.password-store-mobile]"
-    echo "  -l --list=LIST  File with the list of passwords to mirror [DEST/.list]"
-    echo "  -r --reverse    Reverse src and dest"
-    echo "  -n --dry-run    Show a report without actually doing anything"
-    echo "  -h --help       Show this help and exit"
-    echo
-    echo "USO"
-    echo "  pass-mirror [REGEX]"
-    echo
-    echo "  Reads a list of passwords from DEST/.list and copies those passwords"
-    echo "  to DEST. The fil can also specify a different path inside DEST."
-    echo "  The file contains one password path per line."
-    exit 2
+cat << EOF
+pass-mirror
+
+Copy passwords between two password stores.
+
+OPTIONS
+  -s --src=SRC    Master password store [~/.password-store]
+  -d --dest=DEST  Mirrored password store [~/.password-store-mobile]
+  -l --list=LIST  File with the list of passwords to mirror [DEST/.list]
+  -r --reverse    Reverse src and dest
+  -n --dry-run    Show a report without actually doing anything
+  -h --help       Show this help and exit
+
+USO
+  pass-mirror [REGEX]
+
+  Reads a list of passwords from DEST/.list and copies those passwords
+  to DEST. The file can also specify a different path inside DEST.
+  The file contains one password path per line.
+EOF
+exit 2
 }
 
 print_failed() {
