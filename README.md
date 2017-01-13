@@ -49,6 +49,16 @@ REGEX_REF2: [a-z]{1}[0-9]{1}
 #  pass2xy a1 b1
 ```
 
+## `pass-mirror`
+
+Maintain a separate password store that mirrors some paths from a master one.
+
+### Help
+
+```
+$ pass-mirror -h
+```
+
 ## License
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or any later version.

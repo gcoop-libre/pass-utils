@@ -1,0 +1,153 @@
+#!/bin/bash
+
+# This script comes with ABSOLUTELY NO WARRANTY, use at own risk
+# Copyright (C) 2017 mpv <ariel@gcoop.coop>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+print_help() {
+cat << EOF
+pass-mirror
+
+Copy passwords between two password stores.
+
+OPTIONS
+  -s --src=SRC    Master password store [~/.password-store]
+  -d --dest=DEST  Mirrored password store [~/.password-store-mobile]
+  -l --list=LIST  File with the list of passwords to mirror [DEST/.list]
+  -r --reverse    Reverse src and dest
+  -n --dry-run    Show a report without actually doing anything
+  -h --help       Show this help and exit
+
+USO
+  pass-mirror [REGEX]
+
+  Reads a list of passwords from DEST/.list and copies those passwords
+  to DEST. The file can also specify a different path inside DEST.
+  The file contains one password path per line.
+EOF
+exit 2
+}
+
+print_failed() {
+    echo -e "\e[1m\e[31m  ✖ \e[0m"
+}
+
+print_ok() {
+    echo -e "\e[1m\e[92m  ✔ \e[0m"
+}
+
+print_changed() {
+    echo -e "\e[1m\e[33m  ✱ \e[0m"
+}
+
+die() {
+  echo -e "\e[1m\e[31m"
+  echo "$1"
+  exit 1
+}
+
+get_pass_src() {
+    PASSWORD_STORE_DIR=$SRC pass show "$1" 2> /dev/null
+}
+
+get_pass_dest() {
+    PASSWORD_STORE_DIR=$DEST pass show "$1" 2> /dev/null
+}
+
+insert_pass() {
+    PASSWORD_STORE_DIR=$DEST pass insert -m "$1" &> /dev/null
+}
+
+compare() {
+    FROM="$1"
+    TO="$2"
+    diff <(PASSWORD_STORE_DIR=$SRC pass show $FROM 2> /dev/null) <(PASSWORD_STORE_DIR=$DEST pass show $TO 2> /dev/null)
+}
+
+OPTS=`getopt -o hnrs::d::l:: --long help,dry-run,reverse,src::,dest::,list:: -n 'pass-mirror' -- "$@"`
+
+eval set -- "$OPTS"
+
+COPY=1
+REVERSE=0
+
+while true; do
+    case "$1" in
+        -h | --help)
+            print_help ;;
+        -n | --dry-run)
+            echo -e "\e[1m\e[92mDry run\e[0m (no password will be copied)"
+            COPY=0 ; shift ;;
+        -s | --src)
+            SRC=$2 ; shift 2 ;;
+        -d | --dest)
+            DEST=$2 ; shift 2 ;;
+        -l | --list)
+            LIST=$2 ; shift 2 ;;
+        -r | --reverse)
+            REVERSE=1 ; shift ;;
+        --) shift; break;;
+        *) print_help ;;
+    esac
+done;
+
+[[ -z "$1" ]] && REGEXP='.*' || REGEXP="$1"
+[[ -z "$SRC" ]] && SRC=~/.password-store
+[[ -z "$DEST" ]] && DEST=~/.password-store-mobile
+[[ -z "$LIST" ]] && LIST=$DEST/.list
+
+if [[ $REVERSE -eq 1 ]]; then
+    AUX="$SRC"; SRC="$DEST"; DEST="$AUX"
+fi
+
+[[ ! -e "$LIST" ]] && die "Not found $LIST"
+[[ ! -e "$SRC/.gpg-id" ]] && die "Not found $SRC/.gpg-id"
+[[ ! -e "$DEST/.gpg-id" ]] && die "Not found $DEST/.gpg-id"
+
+TEMPLIST=`mktemp /tmp/.pass-mirror.XXXXXXXX.tmp`
+egrep "$REGEXP"  "$LIST" | grep -v '#' | egrep -v '^$' > "$TEMPLIST"
+
+if [[ $COPY -eq 0 ]]; then
+    echo "Copying entries from $SRC to $DEST..." | sed "s/\(.\)/\1̶/g"
+else
+    echo "Copying entries from $SRC to $DEST..."
+fi
+while read FROM TO; do
+    [[ -z "$TO" ]] && TO="$FROM"
+    if [[ $REVERSE -eq 1 ]]; then
+        AUX="$FROM"; FROM="$TO"; TO="$AUX"
+    fi
+    echo -en " > \e[34m$TO\e[0m ($FROM)"
+
+    SKIP=0
+    if [[ `get_pass_src $FROM` ]]; then
+        if [[ `get_pass_dest $TO` ]]; then
+            if [[ `compare "$FROM" "$TO"` ]]; then
+                print_changed
+            else
+                print_ok; SKIP=1
+            fi
+        else
+            print_changed
+        fi
+    else
+        print_failed
+    fi
+    if [[ $COPY -ne 0 ]] && [[ $SKIP -ne 1 ]]; then
+        get_pass_src $FROM | insert_pass $TO
+    fi
+done < $TEMPLIST
+
+rm $TEMPLIST
