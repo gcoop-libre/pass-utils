@@ -112,6 +112,10 @@ if [[ $REVERSE -eq 1 ]]; then
     AUX="$SRC"; SRC="$DEST"; DEST="$AUX"
 fi
 
+[[ ! -e "$LIST" ]] && die "Not found $LIST"
+[[ ! -e "$SRC/.gpg-id" ]] && die "Not found $SRC/.gpg-id"
+[[ ! -e "$DEST/.gpg-id" ]] && die "Not found $DEST/.gpg-id"
+
 TEMPLIST=`mktemp /tmp/.pass-mirror.XXXXXXXX.tmp`
 egrep "$REGEXP"  "$LIST" | grep -v '#' | egrep -v '^$' > "$TEMPLIST"
 
