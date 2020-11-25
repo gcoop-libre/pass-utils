@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# This script comes with ABSOLUTELY NO WARRANTY, use at own risk
+# Copyright (C) 2020 Osiris Alejandro Gomez <osiris@gcoop.coop>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+LETTER_MIN=3
+LETTER_MAX=9
+
+[[ -z "$1" ]] && exit 1
+
+PASS_PATH="$1"
+
+[[ ! -z "$PASS_MIN" ]] && LETTER_MIN="$PASS_MIN"
+[[ ! -z "$PASS_MAX" ]] && LETTER_MAX="$PASS_MAX"
+
+if [[ ! -z "$ANSIBLE_PASS_PASSWORD_STORE_DIR" ]]
+then
+	export PASSWORD_STORE_DIR="$ANSIBLE_PASS_PASSWORD_STORE_DIR"
+fi
+
+if [[ ! -z "$PASS_LETTERS" ]]
+then
+  LETTERS="$PASS_LETTERS"
+else
+  LETTERS="$(strings /dev/random | grep -oE '[a-z]{3}' | head -1)"
+fi
+
+PASS="$(gen-passphrase "$LETTERS" "$LETTER_MIN" "$LETTER_MAX")"
+
+echo -n "$PASS" | pass insert "$PASS_PATH" -m
