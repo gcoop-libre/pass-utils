@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# This script comes with ABSOLUTELY NO WARRANTY, use at own risk
+# Copyright (C) 2021 Osiris Alejandro Gomez <osiux@osiux.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+function die()
+{
+  >&2 echo "ERROR: $1"
+  exit 1
+}
+
+function iw_scan()
+{
+ iw wlan0 scan | grep -i 'SSID' | head -30 | cut -d: -f2 | sed 's/^ //g' | sort -u
+ #FIXME use fzf to select SSID
+ die "EMPTY SSID"
+}
+
+IF='wlan0'
+LOG='wpa_supplicant.log'
+
+ESSID="$*"
+[[ -z "$1" ]] && iw_scan
+
+CONF="${ESSID}.conf"
+PSK="$(pass "wifi/$ESSID/psk")"
+
+[[ -s "$PSK" ]] && die "NOT FOUND $PSK. TRY: pass insert $PSK"
+
+CFG=$(cat << EOF
+network={
+        ssid="$ESSID"
+        psk=$PSK
+}
+EOF
+)
+
+[[ ! -e "$CONF" ]] && echo "$CFG" > "$CONF"
+[[ ! -s "$CONF" ]] && die "EMPTY $CONF"
+
+pkill -f wpa_supplicant
+sleep 1
+echo wpa_supplicant -i wlan0 -c "$CONF" -B -f "$LOG"
+wpa_supplicant -i "$IF" -c "$CONF" -B -f "$LOG"
+tail "$LOG"
+sleep 2
+tail "$LOG"
+dhclient wlan0 && rm -f "$CONF"
+tail "$LOG"
+ip r
