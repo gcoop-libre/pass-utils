@@ -29,5 +29,11 @@ find . -type f -iname '*.gpg' \
   | while read -r F
     do
       N="$(echo "$F" | sed 's/.gpg$//g')"
-      echo "$(gpg -d "$F" 2>/dev/null)" | pass insert "$N" -m
+      DATA="$(gpg -d "$F" 2>/dev/null)"
+      if [[ "$?" -eq 0 ]]
+      then
+        echo "$DATA" | pass insert "$N" -m
+      else
+        echo "ERROR $F" && continue
+      fi
     done
