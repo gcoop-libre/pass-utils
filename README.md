@@ -2,6 +2,14 @@
 
 Useful scripts for https://www.passwordstore.org/
 
+## `lukspass`
+
+Mount LUKS encrypted volume:
+
+```
+lukspass debian10
+```
+
 ## `pass2xy`
 
 ### Install
@@ -66,4 +74,3 @@ Reencrypt password store with new keys in `.gpg-id`.
 ## License
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or any later version.
-
