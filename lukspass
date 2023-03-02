@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# This script comes with ABSOLUTELY NO WARRANTY, use at own risk
+# Copyright (C) 2020 Osiris Alejandro Gomez <osiux@osiux.com>
+# Copyright (C) 2020 Osiris Alejandro Gomez <osiris@gcoop.coop>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+# shellcheck disable=SC2181
+
+[[ -n "$BASH_DEBUG"         ]] && set -x
+
+function die()
+{
+  >&2 echo "ERROR: $1"
+  exit 1
+}
+
+[[ -z "$1"                  ]] && die "EMPTY NAME"
+BIN="$(basename "$0")"
+DEV="$1"
+NAME="$1"
+[[ -n "$PASSWORD_STORE_DIR" ]] || PASSWORD_STORE_DIR="$HOME/.password-store"
+[[ -n "$PASS_PREFIX"        ]] || PASS_PREFIX='/luks/'
+[[ -n "$PASS_SUFFIX"        ]] || PASS_SUFFIX='/'
+[[ -n "$HOST"               ]] || HOST="$(hostname -s)"
+[[ -n "$MOUNT_PREFIX"       ]] || MOUNT_PREFIX='/mnt/'
+[[ -n "$PASS_NAME"          ]] || PASS_NAME="${PASS_PREFIX}${HOST}${PASS_SUFFIX}${NAME}"
+[[ -n "$FILE"               ]] || FILE="${PASSWORD_STORE_DIR}${PASS_NAME}.gpg"
+[[ -L "$FILE"               ]] && DEV="$(basename "$(realpath "$FILE")" .gpg)"
+[[ -L "/dev/mapper/$NAME"   ]] && cryptsetup luksClose "$NAME"
+
+mkdir -p  "/mnt/$NAME"
+chmod 750 "/mnt/$NAME"
+
+SECRET="$(pass "${PASS_NAME#/*}" | tr -d '\n')"
+[[ -z "$SECRET" ]] && die "EMPTY SECRET"
+
+DEV_ID="/dev/disk/by-id/$DEV"
+
+echo -n "$SECRET" | cryptsetup luksOpen "$DEV_ID" "$NAME" -d -
+
+[[ "$?" -ne 0 ]] && die "FAIL luksOpen $DEV_ID WITH ${PASS_NAME#/*}"
+
+MOUNT_POINT="${MOUNT_PREFIX}$NAME"
+mount "/dev/mapper/$NAME" "$MOUNT_POINT"
+
+[[ "$?" -ne 0 ]] && die "FAIL mount /dev/mapper/$NAME $MOUNT_POINT"
+
+LOG="$BIN name=$NAME gpg=$FILE device=$DEV"
+logger -i "$LOG"
+echo "$LOG"
