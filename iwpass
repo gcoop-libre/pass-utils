@@ -36,7 +36,7 @@ function iw_scan()
 
 [[ -n "$IF"  ]] || IF='wlan0'
 [[ -n "$LOG" ]] || LOG='wpa_supplicant.log'
-[[ -n "$DIR" ]] || DIR="/root/.iwpass"
+[[ -n "$DIR" ]] || DIR="$HOME/.iwpass"
 
 ESSID="$*"
 
