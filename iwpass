@@ -24,21 +24,44 @@ function die()
 
 function iw_scan()
 {
- iw wlan0 scan | grep -i 'SSID' | head -30 | cut -d: -f2 | sed 's/^ //g' | sort -u
- #FIXME use fzf to select SSID
- die "EMPTY SSID"
+ iw "$IF" scan           \
+   | grep -i 'SSID'      \
+   | head -30            \
+   | cut -d: -f2         \
+   | sed 's/^ //g'       \
+   | grep -v 'SSID List' \
+   | sort -u             \
+   | fzf
 }
 
-IF='wlan0'
-LOG='wpa_supplicant.log'
+[[ -n "$IF"  ]] || IF='wlan0'
+[[ -n "$LOG" ]] || LOG='wpa_supplicant.log'
+[[ -n "$DIR" ]] || DIR="/root/.iwpass"
 
 ESSID="$*"
-[[ -z "$1" ]] && iw_scan
 
-CONF="${ESSID}.conf"
-PSK="$(pass "wifi/$ESSID/psk")"
+mkdir -p  "$DIR"
+chmod 600 "$DIR"
 
-[[ -s "$PSK" ]] && die "NOT FOUND $PSK. TRY: pass insert $PSK"
+[[ -z "$1"     ]] && ESSID="$(iw_scan)"
+[[ -z "$ESSID" ]] && die "EMPTY SSID"
+
+CONF="$DIR/$ESSID.conf"
+
+if [[ ! -e "$CONF" ]]
+then
+
+  echo "NOT FOUND $CONF"
+
+  PSK="$(pass "wifi/$ESSID/psk")"
+
+  if [[ -z "$PSK" ]]
+  then
+    PASS="$(pass "wifi/$ESSID/pass")"
+    PSK="$(pass "wifi/$ESSID/psk")"
+    [[ -z "$PASS" ]] && die "NOT FOUND $PSK. TRY: pass insert wifi/$ESSID/pass"
+    wpa_passphrase "$ESSID" "$PASS" > "$CONF"
+  fi
 
 CFG=$(cat << EOF
 network={
@@ -48,16 +71,20 @@ network={
 EOF
 )
 
-[[ ! -e "$CONF" ]] && echo "$CFG" > "$CONF"
+  echo "$CFG" > "$CONF"
+
+fi
+
 [[ ! -s "$CONF" ]] && die "EMPTY $CONF"
 
 pkill -f wpa_supplicant
 sleep 1
-echo wpa_supplicant -i wlan0 -c "$CONF" -B -f "$LOG"
-wpa_supplicant -i "$IF" -c "$CONF" -B -f "$LOG"
+echo wpa_supplicant -i "$IF" -c "$CONF" -B -f "$LOG"
+wpa_supplicant -i "$IF" -c "$CONF" -B -f "$LOG" || die "wpa_supplicant"
 tail "$LOG"
 sleep 2
 tail "$LOG"
-dhclient wlan0 && rm -f "$CONF"
+dhclient "$IF"
+# FIXME rm -f "$CONF"
 tail "$LOG"
 ip r

@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# This script comes with ABSOLUTELY NO WARRANTY, use at own risk
+# Copyright (C) 2022 Osiris Alejandro Gomez <osiux@osiux.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+function get_ssid()
+{
+
+IF="$(ip r s default | awk '/default via/ {print $5}')"
+
+iwconfig "$IF" 2>/dev/null        \
+  | grep 'ESSID'                  \
+  | cut -d: -f2-                  \
+  | sed 's/^"//g'                 \
+  | sed 's/ \+$//g'               \
+  | sed 's/"$//g'                 \
+  | head -1                       \
+  | grep -Ev "(any|Not-Associated)"
+
+}
+
+[[ -n "$SSID"               ]] || SSID="$(get_ssid)"
+[[ -z "$1"                  ]] || SSID="$1"
+[[ -n "$PASSWORD_STORE_DIR" ]] || export PASSWORD_STORE_DIR="$HOME/.password-store"
+
+[[ -d "$PASSWORD_STORE_DIR" ]] && PASS="$(pass "wifi/$SSID/pass")"
+
+if [[ -z "$PASS"            ]]
+then
+  echo -n "Password: "
+  read -r -s PASS
+fi
+
+[[ -n "$TYPE"  ]] || TYPE='wpa'
+[[ -n "$HIDEN" ]] || H='false'
+
+QR="WIFI:S:$SSID;P:$PASS;T:$TYPE;$H;"
+
+if command -v qrencode >/dev/null 2>/dev/null
+then
+  qrencode -o - -t UTF8 "$QR"
+else
+  printf "\nNOT FOUND qrencode, TRY apt install qrencode\n\n%s\n" "$QR"
+  exit 1
+fi

@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# This script comes with ABSOLUTELY NO WARRANTY, use at own risk
+# Copyright (C) 2021 Osiris Alejandro Gomez <osiux@osiux.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+# shellcheck disable=SC1090
+
+set -eo pipefail
+
+die()
+{
+  echo "ERROR: $1"
+  exit 1
+}
+
+KEY_TMP="$(mktemp -p /dev/shm)"
+KEY_DIR="$HOME/.password-store"
+
+[[ -z "$1"                  ]] && die "EMPTY KEY"
+[[ -z "$PASSWORD_STORE_DIR" ]] || KEY_DIR="$PASSWORD_STORE_DIR"
+
+KEY="$1"
+KEY_SSH="$HOME/.ssh/$(basename "$KEY")"
+[[ -e "$KEY_SSH" ]] || die "NOT FOUND $KEY_SSH"
+
+KEY_CHN="$HOME/.keychain/$(uname -n)-sh"
+[[ -e "$KEY_CHN" ]] && source "$KEY_CHN"
+
+KEY_HSH="$(ssh-keygen -l -E sha256 -f "$KEY_SSH" | awk '{print $2}')"
+
+ssh-add -l | grep "$KEY_HSH" >/dev/null && exit 0
+
+echo "PASSWORD_STORE_DIR=$KEY_DIR pass $KEY" > "$KEY_TMP"
+chmod 500 "$KEY_TMP"
+
+if [[ -z "$DISPLAY" ]]
+then
+  DISPLAY=None SSH_ASKPASS="$KEY_TMP" ssh-add - < "$KEY_SSH" >/dev/null
+else
+  DISPLAY=:0   SSH_ASKPASS="$KEY_TMP" ssh-add - < "$KEY_SSH" >/dev/null
+fi
+
+rm -f "$KEY_TMP"

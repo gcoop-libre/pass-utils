@@ -18,16 +18,20 @@
 
 # shellcheck disable=SC2001
 # shellcheck disable=SC2005
+# shellcheck disable=SC2181
 
 [[ -e '.gpg-id' ]] || exit 1
+[[ -n "$DIR"    ]] || DIR='.'
+[[ -d "$DIR"    ]] || exit 1
 
 export PASSWORD_STORE_DIR="$PWD"
 
-find . -type f -iname '*.gpg' \
-  | grep '\.gpg$'             \
-  | cut -d/ -f2-              \
+find "$DIR" -type f -iname '*.gpg' \
+  | grep '\.gpg$'                  \
+  | cut -d/ -f2-                   \
   | while read -r F
     do
+      [[ "$DIR" != '.' ]] && F="$DIR/$F"
       N="$(echo "$F" | sed 's/.gpg$//g')"
       DATA="$(gpg -d "$F" 2>/dev/null)"
       if [[ "$?" -eq 0 ]]
