@@ -1,0 +1,118 @@
+#!/bin/bash
+
+# This script comes with ABSOLUTELY NO WARRANTY, use at own risk
+# Copyright (C) 2023 Osiris Alejandro Gomez <osiux@osiux.com>
+# Copyright (C) 2023 Osiris Alejandro Gomez <osiris@gcoop.coop>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+BIN="$(basename "$0")"
+
+function die()
+{
+  echo >&2 "$1"
+  exit 1
+}
+
+TMPI="$(mktemp)"
+true > "$TMPI"
+
+if [[ ! -t 0 ]]
+then
+
+  while IFS= read -r PIPED_INPUT
+  do
+    echo "$PIPED_INPUT" >> "$TMPI"
+  done
+
+fi
+
+function usage()
+{
+cat << EOF
+
+Usage:
+
+\`\`\`bash
+
+  cat gpg-relace | [DIRS=.git-repos] $BIN
+
+\`\`\`
+
+Read \`OLD_KEY\` and \`NEW_KEY\` from _STDIN_ and invoke pass-key to
+replace, update or delete keys in multiple repositories defined in
+\`DIRS\` environtment variable.
+
+When \`DIRS\` variable is undefined, find all \`.password-store*\`
+directories.
+
+Example:
+
+\`\`\`bash
+
+  cat gpg-replace | DIRS=.git-repos $BIN
+
+\`\`\`
+
+EOF
+exit 0
+}
+
+[[ "$1" =~ ^[-]+(h|help) ]] && usage
+
+[[ -n "$BASE"    ]] || BASE="$PWD"
+[[ -n "$EXCLUDE" ]] || EXCLUDE='\.bak'
+[[ -n "$OLD_KEY" ]] || OLD_KEY="$1"
+[[ -n "$NEW_KEY" ]] || NEW_KEY="$2"
+[[ -s "$TMPI"    ]] || echo "$OLD_KEY $NEW_KEY" > "$TMPI"
+
+if [[ -n "$DIRS" ]]
+then
+
+  [[ -s "$DIRS" ]] || die "EMPTY FILE $DIRS"
+
+else
+
+  DIRS="$(mktemp)"
+  DELETE_DIRS=1
+
+  find . -maxdepth 1 -type d -iname '.password-store*' \
+    | cut -d '/' -f2-     \
+    | grep -vE "$EXCLUDE" > "$DIRS"
+
+fi
+
+TMPO="$(mktemp)"
+
+while read -r D _
+do
+
+  while read -r OLD NEW
+  do
+
+    pass-key "$OLD" "$NEW" "$D" > "$TMPO"
+
+    if [[ -s "$TMPO" ]]
+    then
+      printf "\\n## %s\\n\\n" "$D"
+      cat "$TMPO"
+    fi
+
+  done < "$TMPI"
+
+done < "$DIRS"
+
+[[ "$DELETE_DIRS" -eq 1 ]] && rm -f "$DIRS"
+
+rm -f "$TMPI" "$TMPO"
