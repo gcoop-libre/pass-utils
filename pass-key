@@ -1,0 +1,313 @@
+#!/bin/bash
+
+# This script comes with ABSOLUTELY NO WARRANTY, use at own risk
+# Copyright (C) 2023 Osiris Alejandro Gomez <osiux@osiux.com>
+# Copyright (C) 2023 Osiris Alejandro Gomez <osiris@gcoop.coop>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+# shellcheck disable=SC2038
+
+BIN="$(basename "$0")"
+
+function die()
+{
+  echo >&2 "$1"
+  exit 1
+}
+
+function gpg2info()
+{
+  local DATE EPOC INFO
+
+  [[ -z "$1"         ]] && return
+  [[ "$1" = 'DELETE' ]] && return
+
+  HASH="$(gpg -k | grep -E "$1$" | grep -Eo '[A-F0-9]{40}' | head -1)"
+  INFO="$(gpg --with-colons --list-keys "$HASH" 2>/dev/null | grep ^uid: | head -1)"
+  EPOC="$(echo "$INFO" | cut -d: -f6)"
+  [[ -z "$EPOC" ]] || DATE="$(date -d "@$EPOC" +%F)"
+  MAIL="$(echo "$INFO" | cut -d: -f10 | cut -d '<' -f2 | cut -d '>' -f1)"
+
+  echo "$DATE/$MAIL"
+}
+
+git_commit()
+{
+  local FILE MSG SUBJECT
+
+  [[ "$GIT_NO_COMMIT" -eq 1 ]] && return
+
+  FILE="$1"
+  SUBJECT="$2"
+
+  [[ -z "$FILE"    ]] && die "EMPTY FILE $FILE"
+  [[ -z "$SUBJECT" ]] && die "EMPTY SUBJECT $SUBJECT"
+
+MSG=$(cat << EOF
+$SUBJECT
+
+  @ 00:00 hs
+EOF
+)
+
+  echo "$MSG" > "$TMP"
+  git commit -F "$TMP" >/dev/null         \
+   && git log --topo-order --date=iso     \
+      --pretty --format='%h %ad %ae %s'   \
+        | sed 's/:[0-9]*\ -[0-9]*\ /\ /g' \
+        | sed 's/@[a-z\.]*//g'            \
+        | head -1
+}
+
+function usage()
+{
+cat << EOF
+
+Usage:
+
+\`\`\`bash
+
+  $BIN OLD_KEY NEW_KEY
+
+\`\`\`
+
+Replace \`OLD_KEY\` with \`NEW_KEY\` in all \`.gpg-id\` files, verify
+and create/update \`.gpg/NEW_KEY.pub\` and delete \`.gpg/OLD_KEY\`.
+
+When \`NEW_KEY\` is \`DELETE\`, remove \`OLD_KEY\` from all \`.gpg-id\`
+files and \`.gpg/OLD_KEY.pub\`.
+
+When \`NEW_KEY\` is \`UPDATE\`, regenerate \`.gpg/OLD_KEY.pub\`.
+
+When \`GIT_NO_COMMIT=0\` execute git commit of changes (Default=0).
+
+When \`GIT_NO_PUSH=0\` execute git push of changes (Default=1).
+
+Example:
+
+\`\`\`bash
+
+  $BIN 5C03BEBA98F51A5EC1D728E692A813B0ACEAC203 1F8607B12C913C007FB6D15749E0258DC6400E11
+
+    8bf55cbf 2023-09-01 16:15 osiris   udemy.com/.gpg-id: replace key 5C03BEBA98F51A5EC1D728E692A813B0ACEAC203 (2021-06-09/juanse) with 1F8607B12C913C007FB6D15749E0258DC6400E11 (2021-08-03/juanse)
+    69ea0316 2023-09-01 16:15 osiris   wifi/.gpg-id: replace key 5C03BEBA98F51A5EC1D728E692A813B0ACEAC203 (2021-06-09/juanse) with 1F8607B12C913C007FB6D15749E0258DC6400E11 (2021-08-03/juanse)
+
+  $BIN 5C03BEBA98F51A5EC1D728E692A813B0ACEAC203 DELETE
+
+    483f2676 2023-09-01 16:15 osiris   .gpg/5C03BEBA98F51A5EC1D728E692A813B0ACEAC203: delete key (2021-06-09/juanse)
+
+\`\`\`
+
+EOF
+exit 0
+}
+
+[[ "$1" =~ ^[-]+(h|help) ]] && usage
+
+DIR="$(basename "$PWD")"
+TMP="$(mktemp)"
+
+[[ "$DIR" =~ ^.password-store     ]] && PASSWORD_STORE_DIR="$PWD"
+[[ -n "$PASSWORD_STORE_DIR"       ]] || PASSWORD_STORE_DIR="$HOME/.password-store"
+[[ -z "$3"                        ]] || PASSWORD_STORE_DIR="$3"
+
+if [[ "$PWD" = "$PASSWORD_STORE_DIR" ]]
+then
+
+  [[ -e '.gpg-id' ]] || die 'NOT FOUND FILE .gpg-id'
+
+else
+
+  cd "$PASSWORD_STORE_DIR" >/dev/null || die "INVALID DIRECTORY $PASSWORD_STORE_DIR"w
+
+fi
+
+[[ -n "$RGX_KEY"                  ]] || RGX_KEY='([A-F0-9]{40}|DELETE|UPDATE)'
+[[ -n "$OLD_KEY"                  ]] || OLD_KEY="$1"
+[[ -n "$NEW_KEY"                  ]] || NEW_KEY="$2"
+[[ -z "$OLD_KEY"                  ]] && die "EMPTY OLD KEY"
+[[ "$NEW_KEY" =~ $RGX_KEY         ]] || die "INVALID KEY FORMAT FOR $NEW_KEY"
+[[ -z "$NEW_KEY"                  ]] && die "EMPTY NEW KEY"
+[[ "$OLD_KEY" = "$NEW_KEY"        ]] && die "NOTHING TO DO KEYS ARE SAME"
+[[ -n "$FULL_PATH"                ]] || FULL_PATH=0
+[[ -n "$DRY_RUN"                  ]] || DRY_RUN=0
+[[ -n "$GIT_NO_COMMIT"            ]] || GIT_NO_COMMIT=0
+[[ -n "$GIT_NO_PUSH"              ]] || GIT_NO_PUSH=1
+
+IDS="$(mktemp)"
+find . -type f -iname '.gpg-id' | cut -d '/' -f2- | sort -u > "$IDS"
+
+[[ -s "$IDS" ]] || die "NOT FOUND .gpg-id FILES IN $PASSWORD_STORE_DIR"
+
+OLD_INFO="$(gpg2info "$OLD_KEY")"
+NEW_INFO="$(gpg2info "$NEW_KEY")"
+
+git stash    >/dev/null
+git clean -f >/dev/null
+
+mkdir -p .gpg
+
+if [[ ! -e '.gpg/ownertrust' ]]
+then
+
+  SUBJECT="gpg/ownertrust: generate with all present keys"
+  CMD="find . -type f -iname .gpg-id | xargs cat | sort -u > $TMP"
+  CMD+=";gpg --export-ownertrust | grep -f $TMP > .gpg/ownertrust"
+
+  if [[ "$DRY_RUN" -eq 0 ]]
+  then
+    bash -c "$CMD"
+    git add .gpg/ownertrust >/dev/null
+    git_commit .gpg/ownertrust "$SUBJECT"
+  fi
+
+fi
+
+true > "$TMP"
+
+while read -r FILE
+do
+
+  grep -q "$OLD_KEY" "$FILE" || continue
+
+  PREFIX="${FILE}"
+
+  if [[ "$NEW_KEY" = 'DELETE' ]]
+  then
+
+    SUBJECT="$(printf "%s: delete key %s (%s)\\n" "$PREFIX" "$OLD_KEY" "$OLD_INFO")"
+    CMD="sed -i '/$OLD_KEY/d' $FILE"
+
+    if [[ "$DRY_RUN" -eq 0 ]]
+    then
+      bash -c "$CMD"
+      git add "$FILE" >/dev/null
+      git_commit "$FILE" "$SUBJECT"
+    fi
+
+  elif [[ "$NEW_KEY" != 'UPDATE' ]]
+  then
+
+    SUBJECT="$(printf "%s: replace key %s (%s) with %s (%s)\\n" "$PREFIX" "$OLD_KEY" "$OLD_INFO" "$NEW_KEY" "$NEW_INFO")"
+    CMD="sed -i 's/^$OLD_KEY$/$NEW_KEY/g' $FILE"
+
+    if [[ "$DRY_RUN" -eq 0 ]]
+    then
+      bash -c "$CMD"
+      git add "$FILE" >/dev/null
+      git_commit "$FILE" "$SUBJECT"
+    fi
+
+  fi
+
+done < "$IDS"
+
+OLD_PUB=".gpg/$OLD_KEY.pub"
+NEW_PUB=".gpg/$NEW_KEY.pub"
+
+if [[ -e "$OLD_PUB" ]]
+then
+
+  if [[ "$NEW_KEY" = 'UPDATE' ]]
+  then
+
+    MD5_OLD_PUB="$(md5sum "$OLD_PUB")"
+    OLD_PUB_GPG="$(mktemp)"
+    gpg -a --export "$OLD_KEY" > "$OLD_PUB_GPG"
+    MD5_OLD_GPG="$(md5sum "$OLD_PUB_GPG")"
+
+    if [[ ! "$MD5_OLD_PUB" = "$MD5_OLD_GPG" ]]
+    then
+
+      PREFIX="${OLD_PUB//.pub/}"
+
+      SUBJECT="$(printf "%s: update key (%s)\\n" "$PREFIX" "$OLD_INFO")"
+      CMD="cp -f $OLD_PUB_GPG $OLD_PUB"
+
+      if [[ "$DRY_RUN" -eq 0 ]]
+      then
+        bash -c "$CMD"
+        git add "$OLD_PUB" >/dev/null
+        git_commit "$OLD_PUB" "$SUBJECT"
+      fi
+
+    fi
+
+  else
+
+    PREFIX="${OLD_PUB//.pub/}"
+    SUBJECT="$(printf "%s: delete key (%s)\\n" "$PREFIX" "$OLD_INFO")"
+
+    if [[ "$DRY_RUN" -eq 0 ]]
+    then
+
+      CMD="rm -f $OLD_PUB"
+      bash -c "$CMD"
+      git rm -f "$OLD_PUB" >/dev/null || die "FAILED git rm -f $OLD_PUB"
+      git_commit "$OLD_PUB" "$SUBJECT"
+
+    fi
+
+  fi
+
+else
+
+  if [[ "$NEW_KEY" = 'DELETE' ]]
+  then
+
+    PREFIX='gpg/ownertrust'
+    SUBJECT="$(printf "%s: delete key %s (%s)\\n" "$PREFIX" "$OLD_KEY" "$OLD_INFO")"
+    CMD="[[ -e .gpg/ownertrust ]] && sed -i '/$OLD_KEY/d' .gpg/ownertrust"
+
+    if [[ "$DRY_RUN" -eq 0 ]]
+    then
+
+      bash -c "$CMD"
+      git add .gpg/ownertrust >/dev/null
+      git_commit ".gpg/ownertrust" "$SUBJECT"
+
+    fi
+
+  else
+
+    find . -type f -iname '.gpg-id' -print \
+      | xargs grep "$NEW_KEY"              \
+      | sort -u                            > "$IDS"
+
+    if [[ -s "$IDS" ]]
+    then
+
+      PREFIX="${NEW_KEY//.pub/}"
+      SUBJECT="$(printf "%s: add key %s (%s)\\n" "$PREFIX" "$NEW_KEY" "$NEW_INFO")"
+      CMD="gpg -a --export $NEW_KEY > $NEW_PUB"
+
+      if [[ "$DRY_RUN" -eq 0 ]]
+      then
+
+        bash -c "$CMD"
+        git add "$NEW_PUB" >/dev/null
+        git_commit "$NEW_PUB" "$SUBJECT"
+
+      fi
+
+    fi
+
+  fi
+
+fi
+
+[[ "$GIT_NO_PUSH" -eq 0 ]] && git push >/dev/null
+
+rm -f "$IDS" "$TMP"
